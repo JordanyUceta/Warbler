@@ -25,11 +25,29 @@ toolbar = DebugToolbarExtension(app)
 connect_db(app)
 
 ##############################################################################
-# Todo: 
-# - fix header image 
-##############################################################################
-# User signup/login/logout
+# How is the logged in user being kept track of?
+# - By the id of their user 
 
+# # whats is flask's g object? 
+# - 'g' is a global object that can be used to store data during a single request cycle. 
+# the 'g' object cna be used to store datra that needs to persists throughtout the lifetime of 
+# the request, such as database connections or user information
+
+# What is the purpose of add_user_to_g?
+# it adds the user id right before everything starts, that way we can have a user global variable 
+# that we can use in other functions
+
+# What does @app.before_request mean? 
+# 'app.before_request' is a decorator in flask that registers a funciton to run before each request is 
+# processed. when a flask application receives a request, it goes through a series of processing steps before 
+# it returns a response to the client. the app.before_request decorator allows you to run a function at the beginning
+# of this processing pipeline, before any other processing is done
+##############################################################################
+
+# with app.app_context(): 
+
+db.create_all()
+    
 
 @app.before_request
 def add_user_to_g():
@@ -138,6 +156,25 @@ def list_users():
 
     return render_template('users/index.html', users=users)
 
+@app.route('/users/add_like/<int:msg_id>', methods=['post'])
+def add_liked_post(msg_id): 
+
+    if not g.user: 
+        flash('Access unathorized.', 'danger')
+        return redirect('/')
+
+    liked_message = Message.query.get_or_404(msg_id) 
+    
+    user_likes = g.user.likes
+
+    if liked_message in user_likes:
+        g.user.likes = [like for like in user_likes if like != liked_message] 
+    else: 
+        g.user.likes.append(liked_message) 
+
+    db.session.commit() 
+
+    return redirect('/')
 
 @app.route('/users/<int:user_id>')
 def users_show(user_id):
@@ -324,13 +361,19 @@ def homepage():
     """
 
     if g.user:
+
+        following_ids = [f.id for f in g.user.following] + [g.user.id]
+
         messages = (Message
                     .query
+                    .filter(Message.user_id.in_(following_ids))
                     .order_by(Message.timestamp.desc())
                     .limit(100)
                     .all())
 
-        return render_template('home.html', messages=messages)
+        user_liked = [msg.id for msg in g.user.likes]
+
+        return render_template('home.html', messages=messages, likes=user_liked)
 
     else:
         return render_template('home-anon.html')
